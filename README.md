@@ -96,6 +96,9 @@ Bob
 
 * Implement a `delete()` method on objects (just like `save()`).
 * Allow for an easy way to consume an existing database.
+* Refactor `sync()` and `__init__()` (both are getting pretty big).
+* Expose a way to explicitly close the connection (and maybe other SQLite commands in general?).
+* Add support for other data values.
 
 ## Acknowledgements
 
