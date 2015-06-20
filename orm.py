@@ -124,7 +124,6 @@ class ORM(object):
                 column_type = NoneSafeType(column_definition)
                 self.columns[column_name] = { "type": column_definition }
             argument_typecasters[column_name] = column_type
-        argument_typecasters["id"] = NoneSafeType(int)
         self.sync() # Will raise TypeError if columns unsafe
         self.mapped_object = ClassFactory("%s_Mapper" % (self.table,),
                                           argument_typecasters=argument_typecasters,
