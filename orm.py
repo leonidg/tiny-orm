@@ -55,10 +55,11 @@ class ORMBase(object):
     object," which is to say an object representing a row in a SQLite
     table.
     """
+    id_key_name = "__id"
     def __init__(self, orm):
         self.__orm = orm
     def save(self):
-        if not hasattr(self, "id"):
+        if not hasattr(self, ORMBase.id_key_name):
             # This object does not exist in the database.
             self.__orm.insert_row(self)
         else:
@@ -96,14 +97,14 @@ class ORM(object):
             raise TypeError("Schema must contain table name (string).")
         if "columns" not in schema or type(schema["columns"]) is not dict:
             raise TypeError("Schema must contain column definitions (dict names -> types).")
-        if "id" in schema["columns"].keys():
-            raise TypeError("Cannot use 'id' as column name. It's reserved.")
+        if ORMBase.id_key_name in schema["columns"].keys():
+            raise TypeError("Cannot use %r as column name. It's reserved." % (ORMBase.id_key_name,))
         self.connection = sqlite3.connect(database_name, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.connection_lock = threading.RLock()
         self.table = schema["table"]
-        self.columns = { "id": { "type": int } }
-        argument_typecasters = { "id": NoneSafeType(int) }
+        self.columns = { ORMBase.id_key_name: { "type": int } }
+        argument_typecasters = { ORMBase.id_key_name: NoneSafeType(int) }
         for column_name, column_definition in copy.deepcopy(schema["columns"]).items():
             # long form definition
             #    favorite_number: { "type": int, "default": 5 }
@@ -127,14 +128,14 @@ class ORM(object):
         self.sync() # Will raise TypeError if columns unsafe
         self.mapped_object = ClassFactory("%s_Mapper" % (self.table,),
                                           argument_typecasters=argument_typecasters,
-                                          exceptions=["_ORMBase__orm"], # This is a magic internal name of the
-                                                                        # __orm object that BaseClass defines.
+                                          # These are magic internal names for objects that BaseClass will need
+                                          exceptions=["_ORMBase__orm", "_ORM%s" % (ORMBase.id_key_name,) ],
                                           BaseClass=ORMBase,
                                           orm=self)
 
     def __call__(self, **kwargs):
         for column_name, column_definition in self.columns.items():
-            if column_name == "id":
+            if column_name == ORMBase.id_key_name:
                 continue
             elif column_name not in kwargs:
                 if "default" in column_definition:
@@ -203,7 +204,7 @@ class ORM(object):
         else:
             column_definition_chunks = []
             for orm_column_name, orm_column_definition in self.columns.items():
-                if orm_column_name == "id":
+                if orm_column_name == ORMBase.id_key_name:
                     continue
                 orm_column_type = ORM.known_column_types[orm_column_definition["type"]]
                 orm_default_value = orm_column_definition.get("default", None)
@@ -216,8 +217,8 @@ class ORM(object):
                     query_chunk += " DEFAULT %s" % (default_value,)
                 return query_chunk
             column_definitions = ",".join(map(column_definition_chunk_to_query_chunk, column_definition_chunks))
-            self.execute_query("CREATE TABLE %s (id INTEGER PRIMARY KEY AUTOINCREMENT, %s)"
-                            % (self.table, column_definitions))
+            self.execute_query("CREATE TABLE %s (%s INTEGER PRIMARY KEY AUTOINCREMENT, %s)"
+                            % (self.table, ORMBase.id_key_name, column_definitions))
 
     def get_all_objects(self):
         def row_to_object(row):
@@ -236,12 +237,12 @@ class ORM(object):
                                                                 ",".join(column_names),
                                                                 ",".join("?"*len(values))),
                            values)
-        new_id = self.execute_query("SELECT id FROM %s ORDER BY id DESC LIMIT 1" % (self.table,))[0][0]
-        mapped_object.id = new_id
+        new_id = self.execute_query("SELECT %s FROM %s ORDER BY %s DESC LIMIT 1" % (ORMBase.id_key_name, self.table, ORMBase.id_key_name))[0][0]
+        setattr(mapped_object, ORMBase.id_key_name, new_id)
 
     def update(self, mapped_object):
         column_setters = [(column_name, mapped_object.__getattribute__(column_name))
                           for column_name in self.columns if column_name in dir(mapped_object)]
         for column_name, new_value in column_setters:
-            self.execute_query("UPDATE %s SET %s=? WHERE id=?" % (self.table, column_name),
-                               [new_value, mapped_object.id])
+            self.execute_query("UPDATE %s SET %s=? WHERE %s=?" % (self.table, column_name, ORMBase.id_key_name),
+                               [new_value, getattr(mapped_object, ORMBase.id_key_name)])
