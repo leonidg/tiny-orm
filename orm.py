@@ -225,24 +225,23 @@ class ORM(object):
             for column_name, row_value in zip(row.keys(), list(row)):
                 kwargs[column_name] = row_value
             return self.mapped_object(**kwargs)
-        rows = self.execute_query("SELECT %s FROM %s" % (",".join(self.columns), self.table,))
+        rows = self.execute_query("SELECT %s FROM %s" % (",".join(self.columns), self.table))
         objects = map(row_to_object, rows)
         return objects
 
     def insert_row(self, mapped_object):
         column_names, values = zip(*[(column_name, mapped_object.__getattribute__(column_name))
                                      for column_name in self.columns if column_name in dir(mapped_object)])
-        self.execute_query("INSERT INTO %s (%s) VALUES (%s)"
-                           % (self.table,
-                              ",".join(column_names),
-                              ",".join(["?" for value in values])),
+        self.execute_query("INSERT INTO %s (%s) VALUES (%s)" % (self.table,
+                                                                ",".join(column_names),
+                                                                ",".join("?"*len(values))),
                            values)
         new_id = self.execute_query("SELECT id FROM %s ORDER BY id DESC LIMIT 1" % (self.table,))[0][0]
         mapped_object.id = new_id
 
     def update(self, mapped_object):
         column_setters = [(column_name, mapped_object.__getattribute__(column_name))
-                        for column_name in self.columns if column_name in dir(mapped_object)]
+                          for column_name in self.columns if column_name in dir(mapped_object)]
         for column_name, new_value in column_setters:
             self.execute_query("UPDATE %s SET %s=? WHERE id=?" % (self.table, column_name),
                                [new_value, mapped_object.id])
